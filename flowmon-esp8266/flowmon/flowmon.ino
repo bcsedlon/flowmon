@@ -1,9 +1,15 @@
 #include "Arduino.h"
 
 #define CONFIG_WIFI_PIN 0
-#define INPUT1_PIN 1	//TX
-#define INPUT2_PIN 2
-#define INPUT3_PIN 3	//RX
+#include "libraries/DoubleResetDetector.h"
+#define DRD_TIMEOUT 10
+#define DRD_ADDRESS 0
+DoubleResetDetector drd(DRD_TIMEOUT, DRD_ADDRESS);
+
+#define INPUT0_PIN 5	//1	//TX
+#define INPUT1_PIN 4	//2
+#define INPUT2_PIN 14	//3	//RX
+#define INPUT3_PIN 12	//3	//RX
 
 //TODO: set time zone and year, month, day
 //#include "Arduino.h"
@@ -53,23 +59,24 @@ WebServer httpServer(80);
 #include <ArduinoOTA.h>
 #include <EEPROM.h>
 
-#define DEVICES_NUM 3
+#define DEVICES_NUM 6 //2 //3
 
 WiFiClient espClient;
 IPAddress deviceIP;
 bool isAP;
 bool isNoComm[DEVICES_NUM];
-int deviceCommIndex;
+volatile int deviceCommIndex;
 bool isCheckIn = false;
 bool isErrorConn = false;
 int reconnectTimeout = 0;
 
-
-
 #define FLOWCOUNTERBUFFER_SIZE 64
-unsigned long flowCounter[DEVICES_NUM];
-unsigned long flowCounters[FLOWCOUNTERBUFFER_SIZE][DEVICES_NUM];
-byte flowCountersIndex;
+unsigned long flowCounter[DEVICES_NUM - 2];
+unsigned long flowCounters[FLOWCOUNTERBUFFER_SIZE][DEVICES_NUM - 2];
+uint8_t flowCountersIndex;
+
+float temperature;
+float humidity;
 
 //#define SD_CS_PIN 22
 #ifdef SD_CS_PIN
@@ -108,15 +115,15 @@ DallasTemperature oneWireSensors(&oneWire);
 //#define LED1_PIN 0 //D1 //12 //D6
 
 //#define CONFIG_WIFI_PIN 27 //17 //D6 //5 //D1
-//#define INPUT1_PIN 14 //D7 //4 //D2
-//#define INPUT2_PIN 2 //35 //D7 //4 //D2
-//#define INPUT3_PIN 15 //34 //D7 //4 //D2
-//#define INPUT4_PIN 26 //32
+//#define INPUT0_PIN 14 //D7 //4 //D2
+//#define INPUT1_PIN 2 //35 //D7 //4 //D2
+//#define INPUT2_PIN 15 //34 //D7 //4 //D2
+//#define INPUT3_PIN 26 //32
 //#define INPUT5_PIN 25 //33
 //#define INPUT6_PIN 33 //25
 //#define INPUT7_PIN 32 //26
 
-//#define DHT_PIN 12 //D2 //9//6
+#define DHT_PIN 13	//12 //D2 //9//6
 #ifdef DHT_PIN
 //#define DHTTYPE DHT11 // DHT 11
 //#define DHTTYPE DHT22   // DHT 22  (AM2302)
@@ -521,10 +528,9 @@ const char* update_path = "/firmware";
 char* htmlHeader =
 		"<html><head><title>FLOWMON</title><meta name=\"viewport\" content=\"width=device-width\"><style type=\"text/css\">body{font-family:monospace;} input{padding:5px;font-size:1em;font-family:monospace;} button{height:100px;width:100px;font-family:monospace;border-radius:5px;}</style></head><body><h1><a href=/>FLOWMON</a></h1>";
 char* htmlFooter =
-		"<hr><a href=./save>SAVE SETTINGS!</a><hr><a href=/settings>SYSTEM SETTINGS</a></body></html>";
+		"<hr><a href=./save>SAVE SETTINGS!</a><hr><a href=/settings>SYSTEM SETTINGS</a><hr>(c) GROWMAT EASY</body></html>";
 //const char HTTP_STYLE[] PROGMEM  = "<style>.c{text-align: center;} div,input{padding:5px;font-size:1em;} input{width:95%;} body{text-align: center;font-family:verdana;} button{border:0;border-radius:0.3rem;background-color:#1fa3ec;color:#fff;line-height:2.4rem;font-size:1.2rem;width:100%;} .q{float: right;width: 64px;text-align: right;} .l{background: url(\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAALVBMVEX///8EBwfBwsLw8PAzNjaCg4NTVVUjJiZDRUUUFxdiZGSho6OSk5Pg4eFydHTCjaf3AAAAZElEQVQ4je2NSw7AIAhEBamKn97/uMXEGBvozkWb9C2Zx4xzWykBhFAeYp9gkLyZE0zIMno9n4g19hmdY39scwqVkOXaxph0ZCXQcqxSpgQpONa59wkRDOL93eAXvimwlbPbwwVAegLS1HGfZAAAAABJRU5ErkJggg==\") no-repeat left center;background-size: 1em;}</style>";
-const char* serverIndex =
-		"<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
+//const char* serverIndex = "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='UPDATE'></form>";
 
 const char* www_username = "FLOWMON";
 char www_password[20];
@@ -622,11 +628,28 @@ String getDeviceForm(int i, struct Device devices[]) {
 	//	else
 	//		s += " AUTO";
 	s += "<br>";
-	s += "FLOW: ";
-	s += String(bitRead(devices[i].flags, OUTPUT_BIT));
-	s += "</h2>";
-	s += "COUNTER: ";
-	s += String(flowCounter[i]);
+
+	if (i < DEVICES_NUM - 2) {
+		s += "FLOW: ";
+		s += String(bitRead(devices[i].flags, OUTPUT_BIT));
+		s += "</h2>";
+		s += "COUNTER: ";
+		s += String(flowCounter[i]);
+	}
+	if (i == DEVICES_NUM - 2) {
+		s += "TEMPERATURE [C]: ";
+		s += String(temperature);
+		s += "</h2>";
+		s += "ALARM: ";
+		s += String(bitRead(devices[i].flags, OUTPUT_BIT));
+	}
+	if (i == DEVICES_NUM - 1) {
+		s += "HUMIDITY [%]: ";
+		s += String(humidity);
+		s += "</h2>";
+		s += "ALARM: ";
+		s += String(bitRead(devices[i].flags, OUTPUT_BIT));
+	}
 	//	if (bitRead(devices[i].flags, OUTPUT_BIT))
 	//		s += " ON";
 	//	else
@@ -644,7 +667,7 @@ String getDeviceForm(int i, struct Device devices[]) {
 	s += "\">";
 
 
-	//if (i < DEVICES_NUM) {
+	if (i < DEVICES_NUM - 2) {
 		s += "<hr>NUMBER OF PULSES [-]<br><input name=par1 value=";
 		s += d.par1;
 		s += "><hr>TIME [SEC]<br><input name=par2 value=";
@@ -654,7 +677,29 @@ String getDeviceForm(int i, struct Device devices[]) {
 		s += "><hr>ID<br><input name=par4 value=";
 		s += d.par4;
 		s += ">";
-	//}
+	}
+	if (i == DEVICES_NUM - 2) {
+		s += "<hr>HIGH ALARM [C]<br><input name=par1 value=";
+		s += d.par1;
+		s += "><hr>LOW ALARM [C]<br><input name=par2 value=";
+		s += d.par2;
+		s += "><hr>PERIODIC TRANSFER [SEC]<br><input name=par3 value=";
+		s += d.par3;
+		s += "><hr>ID<br><input name=par4 value=";
+		s += d.par4;
+		s += ">";
+	}
+	if (i == DEVICES_NUM - 1) {
+		s += "<hr>HIGH ALARM [%]<br><input name=par1 value=";
+		s += d.par1;
+		s += "><hr>LOW ALARM [%]<br><input name=par2 value=";
+		s += d.par2;
+		s += "><hr>PERIODIC TRANSFER [SEC]<br><input name=par3 value=";
+		s += d.par3;
+		s += "><hr>ID<br><input name=par4 value=";
+		s += d.par4;
+		s += ">";
+	}
 	/*
 	if (i == DEV_ALARM) {
 		s += "<hr>ALARM NO FLOW AFTER TIME [SECOND]<br><input name=par1 value=";
@@ -737,30 +782,43 @@ void startWiFiAP() {
 	Serial.println(deviceIP);
 }
 
-void handleInterruptPIN2() {
+void handleInterrupt0() {
+	//flowCounter[2]++;
 	flowCounter[0]++;
 }
 
-void handleInterruptPIN3() {
+void handleInterrupt1() {
 	flowCounter[1]++;
 }
 
-void handleInterruptPIN1() {
+void handleInterrupt2() {
+	//flowCounter[1]++;
 	flowCounter[2]++;
+}
+
+void handleInterrupt3() {
+	//flowCounter[2]++;
+	flowCounter[3]++;
 }
 
 /////////////////////////////////
 // setup
 /////////////////////////////////
 void setup() {
-	;
-#ifdef INPUT1_PIN
 
-#elif INPUT3_PIN
+	for(int i = 0; i < DEVICES_NUM - 2; i++) {
+		for(int j = 0; j < FLOWCOUNTERBUFFER_SIZE; j++)
+			flowCounters[j][i] = 0;
+	}
+
+#ifdef INPUT0_PIN
+
+#elif INPUT2_PIN
 	Serial.begin(9600, SERIAL_8N1, SERIAL_TX_ONLY);//, 1);
 #else
-	Serial.begin(9600)
+	Serial.begin(9600);
 #endif
+	Serial.begin(9600);
 
 	Serial.print("\n\n");
 	Serial.println("FLOWMON");
@@ -856,13 +914,19 @@ void setup() {
 		for (int i = 0; i < DEVICES_NUM; i++) {
 			devices[i].name[0] = i + 48;
 			devices[i].name[1] = 0;
+			devices[i].par1 = 0;
+			devices[i].par2 = 0;
+			devices[i].par3 = 0;
 			devices[i].par4 = i;
 			bitClear(devices[i].flags, OUTPUT_BIT);
 		}
 
 #ifdef THINGSSPEAK
-		strcpy(serverName, "api.thingspeak.com");
-		writeApiKey[0] = '/0';
+		//strcpy(serverName, "api.thingspeak.com");
+		strcpy(serverName, "192.168.0.1");
+		//writeApiKey[0] = '/0';
+		strcpy(writeApiKey, "update");
+
 		//talkbackID = 0;
 		talkbackID = 80;
 		talkbackApiKey[0] = '/0';
@@ -907,19 +971,24 @@ void setup() {
 	pinMode(CONFIG_WIFI_PIN, INPUT_PULLUP);
 #endif
 
+#ifdef INPUT0_PIN
+	//pinMode(INPUT0_PIN, FUNCTION_3);
+	pinMode(INPUT0_PIN, INPUT_PULLUP);
+	attachInterrupt(digitalPinToInterrupt(INPUT0_PIN), handleInterrupt0, FALLING);
+#endif
 #ifdef INPUT1_PIN
-	pinMode(INPUT1_PIN, FUNCTION_3);
 	pinMode(INPUT1_PIN, INPUT_PULLUP);
-	attachInterrupt(digitalPinToInterrupt(INPUT1_PIN), handleInterruptPIN1, FALLING);	//TX
+	attachInterrupt(digitalPinToInterrupt(INPUT1_PIN), handleInterrupt1, FALLING);
 #endif
 #ifdef INPUT2_PIN
+	pinMode(INPUT2_PIN, FUNCTION_3);
 	pinMode(INPUT2_PIN, INPUT_PULLUP);
-	attachInterrupt(digitalPinToInterrupt(INPUT2_PIN), handleInterruptPIN2, FALLING);
+	attachInterrupt(digitalPinToInterrupt(INPUT2_PIN), handleInterrupt2, FALLING);
 #endif
 #ifdef INPUT3_PIN
 	pinMode(INPUT3_PIN, FUNCTION_3);
 	pinMode(INPUT3_PIN, INPUT_PULLUP);
-	attachInterrupt(digitalPinToInterrupt(INPUT3_PIN), handleInterruptPIN3, FALLING);	//RX
+	attachInterrupt(digitalPinToInterrupt(INPUT3_PIN), handleInterrupt3, FALLING);
 #endif
 
 #ifdef RFTX_PIN
@@ -967,13 +1036,14 @@ void setup() {
 	WiFiManager wifiManager;
 
 
-#ifdef INPUT1_PIN
-	if (digitalRead(INPUT1_PIN) == LOW) {
+#ifdef INPUT0_PIN
+	if (digitalRead(INPUT0_PIN) == LOW) {
 		strcpy(www_password, "FLOWMON");
 	}
 #endif
 
 #ifdef CONFIG_WIFI_PIN
+	/*
 	bool isConfigWifi = false;
 	while(millis() < 10000) {
 		yield();
@@ -985,8 +1055,11 @@ void setup() {
 			break;
 		}
 	}
-	//if (digitalRead(CONFIG_WIFI_PIN) == LOW) {
 	if (isConfigWifi) {
+	//if (digitalRead(CONFIG_WIFI_PIN) == LOW) {
+	*/
+
+	if (drd.detectDoubleReset()) {
 
 
 #ifdef LED0_PIN
@@ -1000,10 +1073,9 @@ void setup() {
 		drawDisplay(&display, 0);
 #endif
 
-		wifiManager.resetSettings();
+		//wifiManager.resetSettings();
 		wifiManager.startConfigPortal("FLOWMON");
 	} else {
-
 
 		isAP = true;
 		Serial.println("Starting AP or connecting to Wi-Fi ...");
@@ -1048,11 +1120,11 @@ void setup() {
 	mqttLock.clear();
 #endif
 
-	//pinMode(INPUT2_PIN, INPUT); //, INPUT_PULLUP);
+	//pinMode(INPUT1_PIN, INPUT); //, INPUT_PULLUP);
 	//pinMode(RX_PIN, INPUT); //, INPUT_PULLUP);
-	//attachInterrupt(digitalPinToInterrupt(INPUT1_PIN), handleInterruptPIN1, FALLING);
+	//attachInterrupt(digitalPinToInterrupt(INPUT0_PIN), handleInterruptPIN1, FALLING);
 	//pinMode(TX_PIN, INPUT); //, INPUT_PULLUP);
-	//attachInterrupt(digitalPinToInterrupt(INPUT2_PIN), handleInterruptTX, FALLING);
+	//attachInterrupt(digitalPinToInterrupt(INPUT1_PIN), handleInterruptTX, FALLING);
 
 	httpServer.on("/",
 			[]() {
@@ -1098,22 +1170,43 @@ void setup() {
 			//message += "<hr><h2>SETTINGS</h2>";
 			for(int i = 0; i < DEVICES_NUM; i++) {
 				message += "<hr>";
+				message += "<h2>";
 				message += "<a href=./dev?id=";
 				message += i;
 				message += ">";
-				message += "<h2>ID ";
+				message += "ID ";
 				message += devices[i].par4;
 				message += ": ";
 				message += devices[i].name;
-				message += "</a> ";
+				message += "</a>";
 				message += "<br>";
-				message += "FLOW: ";
-				message += String(bitRead(devices[i].flags, OUTPUT_BIT));
-				message += "</h2>";
-				//message += digitalRead(INPUT2_PIN);
-				//message += "</h2>";
-				message += "COUNTER: ";
-				message += flowCounter[i];
+				if(i < DEVICES_NUM - 2) {
+					message += "FLOW: ";
+					message += String(bitRead(devices[i].flags, OUTPUT_BIT));
+					message += "</h2>";
+					//message += digitalRead(INPUT1_PIN);
+					//message += "</h2>";
+					message += "COUNTER: ";
+					message += flowCounter[i];
+				}
+				if(i == DEVICES_NUM - 2) {
+					message += "TEMPERATURE [C]: ";
+					message += temperature;
+					message += "</h2>";
+					//message += digitalRead(INPUT1_PIN);
+					//message += "</h2>";
+					message += "ALARM: ";
+					message += String(bitRead(devices[i].flags, OUTPUT_BIT));
+				}
+				if(i == DEVICES_NUM - 1) {
+					message += "HUMIDITY [%]: ";
+					message += humidity;
+					message += "</h2>";
+					//message += digitalRead(INPUT1_PIN);
+					//message += "</h2>";
+					message += "ALARM: ";
+					message += String(bitRead(devices[i].flags, OUTPUT_BIT));
+				}
 
 
 				/*
@@ -1342,6 +1435,10 @@ void setup() {
 #endif
 
 		String message = htmlHeader;
+		message += "<h1>STATION: ";
+		message += talkbackApiKey;
+		message += "</h1><hr>";
+
 #ifdef NTP
 		if(httpServer.arg("cmd").equals("settime")) {
 			int offset = CE.toUTC(0) - CE.toLocal(0);
@@ -1519,7 +1616,7 @@ void setup() {
 	MDNS.begin(host);
 
 #ifdef ESP8266
-	httpUpdater.setup(&httpServer, update_path, www_username, www_password);
+	httpUpdater.setup(&httpServer, update_path);//, www_username, www_password);
 #endif
 
 	MDNS.addService("http", "tcp", 80);
@@ -1802,10 +1899,10 @@ void loopComm(void *pvParameters) {
 			//					+ "&field1="
 
 			//TODO:
-			//makeHttpGet(deviceCommIndex);
-			for(int i = 0; i< DEVICES_NUM; i++) {
-				makeHttpGet(i);
-			}
+			makeHttpGet(deviceCommIndex);
+			//for(int i = 0; i< DEVICES_NUM; i++) {
+			//	makeHttpGet(i);
+			//}
 
 			/*
 			String get = "http://" + String(serverName) + "/" + writeApiKey + "?id=" + talkbackID + "&field1=" + String(talkbackApiKey) + "&field2=" + String(flowCounter) + "&field2=" + String(flowCounter);
@@ -1872,12 +1969,14 @@ void loopComm(void *pvParameters) {
 /////////////////////////////////////
 void loop() {
 
+	  drd.loop();
+
 	//devices[DEV_ALARM].par1
 
 #ifdef ESP8266
 	//if(secCounter % 60 == 0)
 	for(int i = 0; i < DEVICES_NUM; i++) {
-		if(devices[i].par3 && secCounter % devices[i].par3 == 0 ) {
+		if(devices[i].par3 && (secCounter % devices[i].par3 == 0)) {
 			if(isNoComm[i]) {
 				deviceCommIndex = i;
 				loopComm(0);
@@ -1930,33 +2029,96 @@ void loop() {
 		lastMillis = millis();
 		secCounter++;
 
-		for(int i = 0; i < DEVICES_NUM; i++) {
+		temperature = dht.readTemperature();
+		humidity = dht.readHumidity();
+		for(int i = 0; i < DEVICES_NUM - 2; i++) {
 			flowCounters[flowCountersIndex][i] = flowCounter[i];
 			flowCountersIndex %= FLOWCOUNTERBUFFER_SIZE;
 		}
 
-	/*
+		//uint8_t flowCountersIndexCompare = flowCountersIndex - devices[0].par2;
+		//flowCountersIndexCompare %= FLOWCOUNTERBUFFER_SIZE;
+		//flowCountersIndexCompare = flowCountersIndex - devices[0].par2;
+		//if(flowCountersIndexCompare < 0)
+		//	flowCountersIndexCompare += FLOWCOUNTERBUFFER_SIZE;
+		//Serial.print(flowCountersIndexCompare);
+		//Serial.print('\t');
+		/*
+		int j = 0;
 		Serial.print(flowCountersIndex);
 		Serial.print('\t');
-		Serial.println(flowCounters[flowCountersIndex]);
-		Serial.print((flowCountersIndex - devices[0].par2) % FLOWCOUNTERBUFFER_SIZE);
+		Serial.println(flowCounters[flowCountersIndex][j]);
+		Serial.print(flowCountersIndexCompare);
 		Serial.print('\t');
-		Serial.println(flowCounters[(flowCountersIndex - devices[0].par2) % FLOWCOUNTERBUFFER_SIZE]);
+		Serial.println(flowCounters[flowCountersIndexCompare][j]);
 
 			for(int i = 0; i < FLOWCOUNTERBUFFER_SIZE; i++) {
 			if(i == flowCountersIndex)
 				Serial.print('A');
-			else if(i == (flowCountersIndex - devices[0].par2) % FLOWCOUNTERBUFFER_SIZE)
-				Serial.print('L');
+			else if(i == flowCountersIndexCompare)
+				Serial.print('C');
 			else
 				Serial.print(' ');
-			Serial.print(flowCounters[i]);
+			Serial.print(flowCounters[i][j]);
 		}
 		Serial.println();
 		*/
 
 		for(int i = 0; i < DEVICES_NUM; i++) {
-			if(flowCounter[i] - flowCounters[(flowCountersIndex - devices[i].par2) % FLOWCOUNTERBUFFER_SIZE][i] > devices[i].par1) {
+			bool isAlarm = false;
+
+			if(i < DEVICES_NUM - 2) {
+				uint8_t flowCountersIndexCompare = flowCountersIndex - devices[i].par2;
+				flowCountersIndexCompare %= FLOWCOUNTERBUFFER_SIZE;
+
+				/*
+				Serial.println();
+				Serial.println(i);
+				Serial.print(flowCountersIndexCompare);
+				Serial.print('\t');
+				Serial.println(flowCounters[flowCountersIndexCompare][i]);
+				Serial.print(flowCountersIndex);
+				Serial.print('\t');
+				Serial.println(flowCounters[flowCountersIndex][i]);
+				for(int j = 0; j < FLOWCOUNTERBUFFER_SIZE; j++) {
+					if(j == flowCountersIndex)
+						Serial.print('A');
+					else if(j == flowCountersIndexCompare)
+						Serial.print('C');
+					else
+						Serial.print(' ');
+					Serial.print(flowCounters[j][i]);
+				}
+				Serial.print("\tR");
+				Serial.print(flowCounters[flowCountersIndex][i] - flowCounters[flowCountersIndexCompare][i]);
+				Serial.println();
+				*/
+
+				if(flowCounters[flowCountersIndex][i] - flowCounters[flowCountersIndexCompare][i] > devices[i].par1) {
+					isAlarm = true;
+					/*
+					if(!bitRead(devices[i].flags, OUTPUT_BIT))
+							bitSet(devices[i].flags, UNACK_BIT);
+						bitSet(devices[i].flags, OUTPUT_BIT);
+				}
+				else {
+					if(bitRead(devices[i].flags, OUTPUT_BIT))
+						bitSet(devices[i].flags, UNACK_BIT);
+					bitClear(devices[i].flags, OUTPUT_BIT);
+				*/
+				}
+			}
+
+			if(i == DEVICES_NUM - 2) {
+				if(temperature > devices[i].par1 || temperature < devices[i].par2)
+					isAlarm = true;
+			}
+			if(i == DEVICES_NUM - 1) {
+				if(humidity > devices[i].par1 || humidity < devices[i].par2)
+					isAlarm = true;
+			}
+
+			if(isAlarm) {
 				if(!bitRead(devices[i].flags, OUTPUT_BIT))
 					bitSet(devices[i].flags, UNACK_BIT);
 				bitSet(devices[i].flags, OUTPUT_BIT);
@@ -1970,14 +2132,22 @@ void loop() {
 
 		flowCountersIndex++;
 
+		Serial.println(millis());
 		for(int i = 0; i < DEVICES_NUM; i++) {
 			Serial.print(i);
 			Serial.print(':');
 			Serial.print(bitRead(devices[i].flags, OUTPUT_BIT));
 			Serial.print(' ');
-			//Serial.print(digitalRead(INPUT2_PIN));
+			//Serial.print(digitalRead(INPUT1_PIN));
 			//Serial.print(' ');
-			Serial.println(flowCounter[i]);
+
+			if(i < DEVICES_NUM - 2)
+				Serial.println(flowCounter[i]);
+			if(i == DEVICES_NUM - 2)
+				Serial.println(temperature);
+			if(i == DEVICES_NUM - 1)
+				Serial.println(humidity);
+
 
 			if(bitRead(devices[i].flags, UNACK_BIT)) {
 				if(makeHttpGet(i) == 200) {
