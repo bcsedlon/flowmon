@@ -32,7 +32,7 @@ const char HTTP_PORTAL_OPTIONS[] PROGMEM  = "<form action=\"/wifi\" method=\"get
 const char HTTP_ITEM[] PROGMEM            = "<div><a href='#p' onclick='c(this)'>{v}</a>&nbsp;<span class='q {i}'>{r}%</span></div>";
 const char HTTP_FORM_START[] PROGMEM      = "<form method='get' action='wifisave'><hr>SSID<br><input id='s' name='s' length=32><hr>PASSWORD<br /><input id='p' name='p' length=64 type='password'><hr>";
 const char HTTP_FORM_PARAM[] PROGMEM      = "<br/><input id='{i}' name='{n}' maxlength={l} placeholder='{p}' value='{v}' {c}>";
-const char HTTP_FORM_END[] PROGMEM        = "<br/><button type='submit'>SAVE!</button></form>";
+const char HTTP_FORM_END[] PROGMEM        = "<button type='submit'>SAVE!</button></form>";
 const char HTTP_SCAN_LINK[] PROGMEM       = "<h3><a href=\"/wifi\">SCAN</a></h3>";
 const char HTTP_SAVED[] PROGMEM           = "<div>OK<br />TRYING TO CONNECT ESP TO NETWORK<br />IF IT FAILS RECONNECT TO AP TO TRY AGAIN</div>";
 const char HTTP_END[] PROGMEM             = "</div><hr>(c) GROWMAT EASY</div></body></html>";

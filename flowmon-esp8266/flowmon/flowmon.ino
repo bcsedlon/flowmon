@@ -1675,7 +1675,14 @@ String int2string(int i) {
 
 //TODO:
 int makeHttpGet(int i) {
-	String get = "http://" + String(serverName) + ":" + String(talkbackID) + "/" + writeApiKey + "?id=" + devices[i].par4 + "&field1=" + devices[i].name + "&field2=" + String(bitRead(devices[i].flags, OUTPUT_BIT)) + "&field2=" + String(flowCounter[i]);
+	String get = "http://" + String(serverName) + ":" + String(talkbackID) + "/" + writeApiKey + "?id=" + devices[i].par4 + "&field1=" + devices[i].name + "&field2=";
+
+	if(i < DEVICES_NUM - 2)
+		get += String(bitRead(devices[i].flags, OUTPUT_BIT)) + "&field3=" + String(flowCounter[i]);
+	if(i == DEVICES_NUM - 2)
+		get += String(bitRead(devices[i].flags, OUTPUT_BIT)) + "&field3=" + String(temperature);
+	if(i == DEVICES_NUM - 1)
+		get += String(bitRead(devices[i].flags, OUTPUT_BIT)) + "&field3=" + String(humidity);
 
 	Serial.println(get);
 	DRAWMESSAGE(display, "TS CONN ...");
