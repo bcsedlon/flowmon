@@ -1171,7 +1171,7 @@ void setup() {
 			for(int i = 0; i < DEVICES_NUM; i++) {
 				message += "<hr>";
 				message += "<h2>";
-				message += "<a href=./dev?id=";
+				message += "<a href=/dev?id=";
 				message += i;
 				message += ">";
 				message += "ID ";
