@@ -10,6 +10,10 @@ DoubleResetDetector drd(DRD_TIMEOUT, DRD_ADDRESS);
 #define INPUT1_PIN 4	//2
 #define INPUT2_PIN 14	//3	//RX
 #define INPUT3_PIN 12	//3	//RX
+#define LED0_PIN 2		//16 //0 //D0 //14 //D5
+
+//#define LED1_PIN 0 //D1 //12 //D6
+//#define LED_BUILTIN 2
 
 //TODO: set time zone and year, month, day
 //#include "Arduino.h"
@@ -108,11 +112,6 @@ float humidity;
 OneWire oneWire(ONEWIREBUS_PIN);
 DallasTemperature oneWireSensors(&oneWire);
 #endif
-
-
-
-//#define LED0_PIN 16 //0 //D0 //14 //D5
-//#define LED1_PIN 0 //D1 //12 //D6
 
 //#define CONFIG_WIFI_PIN 27 //17 //D6 //5 //D1
 //#define INPUT0_PIN 14 //D7 //4 //D2
@@ -801,10 +800,39 @@ void handleInterrupt3() {
 	flowCounter[3]++;
 }
 
+bool connectWiFi() {
+
+
+	if(WiFi.status() == WL_CONNECTED) {
+		digitalWrite(LED_BUILTIN, true);
+		return true;
+	}
+	DRAWMESSAGE(display, "WIFI CONN... ");
+	WiFiManager wifiManager;
+	//if (wifiManager.autoConnect()) {
+	if (wifiManager.connectWifi("", "") == WL_CONNECTED) {
+		isAP = false;
+		Serial.print("IP address: ");
+		Serial.println(WiFi.localIP());
+		DRAWMESSAGE(display, "WIFI CONN");
+		digitalWrite(LED0_PIN, true);
+		return true;
+	}
+	for(int i = 0; i < 16; i++) {
+		digitalWrite(LED0_PIN, true);
+		delay(250);
+		digitalWrite(LED0_PIN, false);
+		delay(250);
+	}
+	return false;
+}
 /////////////////////////////////
 // setup
 /////////////////////////////////
 void setup() {
+
+	//pinMode(LED_BUILTIN, OUTPUT);
+	//digitalWrite(LED_BUILTIN, true);
 
 	for(int i = 0; i < DEVICES_NUM - 2; i++) {
 		for(int j = 0; j < FLOWCOUNTERBUFFER_SIZE; j++)
@@ -1008,7 +1036,7 @@ void setup() {
 
 #ifdef LED0_PIN
 	pinMode(LED0_PIN, OUTPUT);
-	digitalWrite(LED0_PIN, LOW);
+	digitalWrite(LED0_PIN, false);
 #endif
 
 #ifdef LED1_PIN
@@ -1033,7 +1061,7 @@ void setup() {
 	//here  "AutoConnectAP"
 	//and goes into a blocking loop awaiting configuration
 
-	WiFiManager wifiManager;
+	//WiFiManager wifiManager;
 
 
 #ifdef INPUT0_PIN
@@ -1042,7 +1070,7 @@ void setup() {
 	}
 #endif
 
-#ifdef CONFIG_WIFI_PIN
+//#ifdef CONFIG_WIFI_PIN
 	/*
 	bool isConfigWifi = false;
 	while(millis() < 10000) {
@@ -1061,9 +1089,14 @@ void setup() {
 
 	if (drd.detectDoubleReset()) {
 
-
 #ifdef LED0_PIN
-		digitalWrite(LED0_PIN, HIGH);
+		for(int i = 0; i < 16; i++) {
+			digitalWrite(LED0_PIN, true);
+			delay(250);
+			digitalWrite(LED0_PIN, false);
+			delay(250);
+		}
+		digitalWrite(LED0_PIN, false);
 #endif
 
 		Serial.println("Starting AP for reconfiguration ...");
@@ -1073,14 +1106,19 @@ void setup() {
 		drawDisplay(&display, 0);
 #endif
 
+		WiFiManager wifiManager;
 		//wifiManager.resetSettings();
-		wifiManager.startConfigPortal("FLOWMON");
+		//wifiManager.startConfigPortal("FLOWMON");
+		wifiManager.startConfigPortal();
 	} else {
 
 		isAP = true;
 		Serial.println("Starting AP or connecting to Wi-Fi ...");
 
+		while(!connectWiFi());
+		/*
 		for (int i = 0; i < 3; i++) {
+
 #else
 	if (true) {
 		Serial.println("Starting connecting to Wi-Fi ...");
@@ -1091,7 +1129,8 @@ void setup() {
 #endif
 
 			DRAWMESSAGE(display, "WIFI CONN... " + String(i));
-			if (wifiManager.autoConnect()) {
+			//if (wifiManager.autoConnect()) {
+			if (wifiManager.connectWifi("", "")) {
 				isAP = false;
 				Serial.print("IP address: ");
 				Serial.println(WiFi.localIP());
@@ -1109,8 +1148,10 @@ void setup() {
 #ifdef LED1_PIN
 		digitalWrite(LED1_PIN, HIGH);
 #endif
+	*/
 
 	}
+
 	Serial.println("READY");
 	WiFi.printDiag(Serial);
 	DRAWMESSAGE(display, "WIFI READY");
@@ -1955,6 +1996,7 @@ void loopComm(void *pvParameters) {
 		for (int i = 0; i < 3; i++) {
 			DRAWMESSAGE(display, "WIFI CONN ... " + String(i));
 			if (wifiManager.autoConnect()) {
+			//if (wifiManager.connectWifi("", "")) {
 				isAP = false;
 				Serial.print("IP address: ");
 				Serial.println(WiFi.localIP());
@@ -2033,6 +2075,9 @@ void loop() {
 	//}
 
 	if (millis() - lastMillis >= 1000) {
+		connectWiFi();
+		digitalWrite(LED0_PIN, secCounter & 1);
+
 		lastMillis = millis();
 		secCounter++;
 
@@ -2254,7 +2299,7 @@ void loop() {
 #endif
 
 #ifdef LED0_PIN
-		digitalWrite(LED0_PIN, not (bitRead(devices[DEV_ALARM_MAX].flags, OUTPUT_BIT) | bitRead(devices[DEV_ALARM_MIN].flags, OUTPUT_BIT)));
+//		digitalWrite(LED0_PIN, not (bitRead(devices[DEV_ALARM_MAX].flags, OUTPUT_BIT) | bitRead(devices[DEV_ALARM_MIN].flags, OUTPUT_BIT)));
 #endif
 
 #ifdef OUTPUT0_PIN
