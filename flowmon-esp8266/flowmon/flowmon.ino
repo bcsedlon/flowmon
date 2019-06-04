@@ -802,7 +802,6 @@ void handleInterrupt3() {
 
 bool connectWiFi() {
 
-
 	if(WiFi.status() == WL_CONNECTED) {
 		digitalWrite(LED_BUILTIN, true);
 		return true;
@@ -833,6 +832,8 @@ void setup() {
 
 	//pinMode(LED_BUILTIN, OUTPUT);
 	//digitalWrite(LED_BUILTIN, true);
+	//pinMode(16, OUTPUT);
+	//digitalWrite(16, true);
 
 	for(int i = 0; i < DEVICES_NUM - 2; i++) {
 		for(int j = 0; j < FLOWCOUNTERBUFFER_SIZE; j++)
@@ -1092,9 +1093,9 @@ void setup() {
 #ifdef LED0_PIN
 		for(int i = 0; i < 16; i++) {
 			digitalWrite(LED0_PIN, true);
-			delay(250);
+			delay(125);
 			digitalWrite(LED0_PIN, false);
-			delay(250);
+			delay(125);
 		}
 		digitalWrite(LED0_PIN, false);
 #endif
