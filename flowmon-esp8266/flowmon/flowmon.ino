@@ -128,7 +128,7 @@ DallasTemperature oneWireSensors(&oneWire);
 //#define DHTTYPE DHT22   // DHT 22  (AM2302)
 //#define DHTTYPE DHT21   // DHT 21 (AM2301)
 #include "libraries/DHT.h"
-DHT dht(DHT_PIN, 11);
+DHT dht(DHT_PIN, 22);
 #endif
 
 #ifdef MQTT
@@ -948,6 +948,11 @@ void setup() {
 			devices[i].par3 = 0;
 			devices[i].par4 = i;
 			bitClear(devices[i].flags, OUTPUT_BIT);
+
+			if(i < 4) {
+				devices[i].par1 = 5;
+				devices[i].par2 = 1;
+			}
 		}
 
 #ifdef THINGSSPEAK
@@ -2082,8 +2087,13 @@ void loop() {
 		lastMillis = millis();
 		secCounter++;
 
-		temperature = dht.readTemperature();
-		humidity = dht.readHumidity();
+		float t = dht.readTemperature();
+		if(!isnan(t))
+			temperature = t;
+		float h = dht.readHumidity();
+		if(!isnan(t))
+			humidity = h;
+
 		for(int i = 0; i < DEVICES_NUM - 2; i++) {
 			flowCounters[flowCountersIndex][i] = flowCounter[i];
 			flowCountersIndex %= FLOWCOUNTERBUFFER_SIZE;
